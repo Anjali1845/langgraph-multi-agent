@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.messages import HumanMessage, AIMessage
 from state import AgentState
 
 load_dotenv()
@@ -13,68 +14,88 @@ llm = ChatGoogleGenerativeAI(
 )
 
 
+# -------------------------
+# Planner Agent
+# -------------------------
 def planner(state: AgentState):
+    history = "\n".join(
+        [f"{type(m).__name__}: {m.content}" for m in state["messages"][-10:]]
+    )
+
     prompt = f"""
-    You are a planning agent.
+You are a planning agent.
 
-    Customer Question:
-    {state['question']}
+Conversation History:
+{history}
 
-    Create a short plan to solve the customer's issue.
-    """
+Current User Question:
+{state['question']}
+
+Identify the customer's intent in one sentence.
+"""
 
     response = llm.invoke(prompt)
 
-    return {"plan": response.content}
+    return {
+        "plan": response.content,
+        "messages": [HumanMessage(content=state["question"])]
+    }
 
 
+# -------------------------
+# Research Agent
+# -------------------------
 def researcher(state: AgentState):
     prompt = f"""
-    You are a research agent.
+You are a customer support researcher.
 
-    Customer Question:
-    {state['question']}
+Plan:
+{state['plan']}
 
-    Plan:
-    {state['plan']}
+Customer Question:
+{state['question']}
 
-    Find the important information needed to answer.
-    """
+Provide useful information that should appear in the reply.
+"""
 
     response = llm.invoke(prompt)
 
     return {"research": response.content}
 
 
+# -------------------------
+# Writer Agent
+# -------------------------
 def writer(state: AgentState):
     prompt = f"""
-    You are a professional customer support writer.
+Write a professional customer support response.
 
-    Question:
-    {state['question']}
+Research:
+{state['research']}
 
-    Research:
-    {state['research']}
-
-    Write a helpful, polite response.
-    """
+Question:
+{state['question']}
+"""
 
     response = llm.invoke(prompt)
 
     return {"draft": response.content}
 
 
+# -------------------------
+# Reviewer Agent
+# -------------------------
 def reviewer(state: AgentState):
     prompt = f"""
-    Review this customer support response.
+Improve this response for clarity, grammar and professionalism.
 
-    Draft:
-    {state['draft']}
-
-    Improve grammar, clarity and professionalism.
-    Return only the final response.
-    """
+Draft:
+{state['draft']}
+"""
 
     response = llm.invoke(prompt)
 
-    return {"final_answer": response.content}
+    return {
+        "final_answer": response.content,
+        "messages": [AIMessage(content=response.content)]
+    }
